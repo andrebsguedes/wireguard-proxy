@@ -135,6 +135,18 @@ impl ProxyClient {
         // we want to wait for first udp packet from client first, to set the target to respond to
         TcpUdpPipe::new(tcp_stream, udp_socket).shuffle_after_first_udp()
     }
+
+    fn tcp_connect(&self) -> Result<TcpStream> {
+        let tcp_stream = TcpStream::connect(&self.tcp_target)?;
+        tcp_stream.set_read_timeout(self.socket_timeout)?;
+        Ok(tcp_stream)
+    }
+
+    fn udp_connect(&self) -> Result<UdpSocket> {
+        let udp_socket = UdpSocket::bind(&self.udp_host)?;
+        udp_socket.set_read_timeout(self.socket_timeout)?;
+        Ok(udp_socket)
+    }
 }
 
 impl ProxyServer {

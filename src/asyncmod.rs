@@ -92,11 +92,11 @@ async fn send_udp<T: AsyncWriteExt + std::marker::Unpin + 'static>(buf: &mut [u8
 impl ProxyClient {
 
     pub async fn start_async(&self) -> Result<usize> {
-        let tcp_stream = self.tcp_connect()?;
+        let tcp_stream = self.tcp_connect().await?;
 
         let udp_socket = self.udp_connect()?;
 
-        TcpUdpPipe::new(tokio::net::TcpStream::from_std(tcp_stream).expect("how could this tokio tcp fail?"), UdpSocket::from_std(udp_socket).expect("how could this tokio udp fail?"))
+        TcpUdpPipe::new(tcp_stream, tokio::net::UdpSocket::from_std(udp_socket).unwrap())
             .shuffle_after_first_udp().await
     }
 
@@ -109,8 +109,7 @@ impl ProxyClient {
     }
 
     pub async fn start_tls_async(&self, hostname: Option<&str>, pinnedpubkey: Option<&str>) -> Result<usize> {
-        let tcp_stream = self.tcp_connect()?;
-        let tcp_stream = tokio::net::TcpStream::from_std(tcp_stream).expect("how could this tokio tcp fail?");
+        let tcp_stream = self.tcp_connect().await?;
 
         use tokio_rustls::{ TlsConnector, rustls::ClientConfig };
 
@@ -142,7 +141,7 @@ impl ProxyClient {
         let udp_socket = self.udp_connect()?;
 
         // we want to wait for first udp packet from client first, to set the target to respond to
-        TcpUdpPipe::new(tcp_stream, UdpSocket::from_std(udp_socket).expect("how could this tokio udp fail?"))
+        TcpUdpPipe::new(tcp_stream, tokio::net::UdpSocket::from_std(udp_socket).unwrap())
             .shuffle_after_first_udp().await
     }
 
@@ -152,6 +151,19 @@ impl ProxyClient {
         rt.block_on(async {
             self.start_tls_async(hostname, pinnedpubkey).await
         })
+    }
+
+    async fn tcp_connect(&self) -> Result<tokio_io_timeout::TimeoutStream<tokio::net::TcpStream>> {
+        let tcp_stream = tokio::net::TcpStream::connect(&self.tcp_target).await?;
+        let mut timeout_stream = tokio_io_timeout::TimeoutStream::new(tcp_stream);
+        timeout_stream.set_read_timeout(self.socket_timeout);
+        Ok(timeout_stream)
+    }
+
+    fn udp_connect(&self) -> Result<std::net::UdpSocket> {
+        let udp_socket = std::net::UdpSocket::bind(&self.udp_host)?;
+        udp_socket.set_read_timeout(self.socket_timeout)?;
+        Ok(udp_socket)
     }
 }
 
