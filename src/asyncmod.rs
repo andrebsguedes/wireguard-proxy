@@ -155,6 +155,7 @@ impl ProxyClient {
 
     async fn tcp_connect(&self) -> Result<tokio_io_timeout::TimeoutStream<tokio::net::TcpStream>> {
         let tcp_stream = tokio::net::TcpStream::connect(&self.tcp_target).await?;
+        tcp_stream.set_nodelay(true)?;
         let mut timeout_stream = tokio_io_timeout::TimeoutStream::new(tcp_stream);
         timeout_stream.set_read_timeout(self.socket_timeout);
         Ok(timeout_stream)
@@ -228,6 +229,7 @@ impl ProxyServer {
 
         loop {
             let (stream, _) = listener.accept().await?;
+            stream.set_nodelay(true)?;
             let client_handler = self.client_handler.clone();
             tokio::spawn(async move {
                 client_handler
